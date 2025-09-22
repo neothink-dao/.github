@@ -1,0 +1,185 @@
+name: AI-Native CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '24.8.0'
+  NEXT_VERSION: '15.5'
+  REACT_VERSION: '19.1'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      has-package-json: ${{ steps.check-files.outputs.has-package-json }}
+      has-tests: ${{ steps.check-files.outputs.has-tests }}
+      has-ai-config: ${{ steps.check-files.outputs.has-ai-config }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check-files
+        run: |
+          echo "has-package-json=$(test -f package.json && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "has-tests=$(test -d tests || test -d __tests__ || test -d test && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "has-ai-config=$(test -f ai.config.js || test -f mcp.config.json && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+
+  ai-safety-validation:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-ai-config == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install AI Safety Tools
+        run: |
+          npm install -g ai-safety-validator@latest
+          npm install -g promptfoo@latest
+      
+      - name: AI Safety Validation
+        run: |
+          if [ -f "safety.config.json" ]; then
+            ai-safety-check --config=safety.config.json
+          fi
+          
+      - name: LLM Testing
+        run: |
+          if [ -f "promptfoo.config.js" ]; then
+            promptfoo eval
+          fi
+
+  lint-and-format:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-package-json == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npm run lint
+        
+      - name: Format check
+        run: npm run format
+
+  type-check:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-package-json == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Type check
+        run: npm run type-check
+
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-tests == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+        
+      - name: AI-specific tests
+        run: |
+          if [ -f "package.json" ] && grep -q "test:ai" package.json; then
+            npm run test:ai
+          fi
+
+  e2e-test:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-package-json == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright
+        run: npx playwright install
+        
+      - name: Run E2E tests
+        run: |
+          if [ -f "package.json" ] && grep -q "test:e2e" package.json; then
+            npm run test:e2e
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint-and-format, type-check, test]
+    if: needs.setup.outputs.has-package-json == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build
+        run: npm run build
+        
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: |
+            .next/
+            dist/
+            build/
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.has-package-json == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run security audit
+        run: npm audit --audit-level high
+        
+      - name: Check for known vulnerabilities
+        run: |
+          npx audit-ci --moderate
