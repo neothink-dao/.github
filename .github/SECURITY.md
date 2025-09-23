@@ -9,7 +9,7 @@
 
 ## AI Security Framework
 
-Neothink DAO implements a comprehensive AI-first security framework across all platforms:
+Neothink implements a comprehensive AI-first security framework across all platforms:
 
 ### AI Model Security
 - **Never trust the model**: All AI outputs undergo validation

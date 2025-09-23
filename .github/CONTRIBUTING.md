@@ -1,6 +1,6 @@
-# Contributing to Neothink DAO
+# Contributing to Neothink
 
-Welcome to the Neothink DAO ecosystem! We're building the future of decentralized intelligence through AI-native applications and breakthrough thinking platforms.
+Welcome to the Neothink ecosystem! We're building AI-native applications and breakthrough thinking platforms supporting Mark Hamilton's philosophy-based personal development methodology.
 
 ## 🚀 Getting Started
 
